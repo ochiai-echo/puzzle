@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>ランダムピクロス（10×10） - ガチャヒント統合版</title>
+  <title>ランダムロジックpuzzle（10×10） - ガチャヒント統合版</title>
   <style>
     :root {
       /* 星エフェクトのデフォルトスケール(半分に変更) */
@@ -367,7 +367,7 @@
       scheduleChord([C, E, G, C*2], afterMeasures, 1.6667);
     }
 
-    /* =========== 6) ピクロス本体 =========== */
+    /* =========== 6) puzzle本体 =========== */
     const gridSize = 10;
     let answerGrid = Array.from({ length: gridSize }, () =>
       Array.from({ length: gridSize }, () => Math.random() > 0.5 ? 1 : 0)
