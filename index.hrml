@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ランダムピクロス（10×10） - ガチャヒント統合版</title>
+  <style>
+    :root {
+      /* 星エフェクトのデフォルトスケール(半分に変更) */
+      --starScale: 15;
+    }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+      /* フルHD前提・広々した背景 */
+      background: linear-gradient(135deg, #cceeff 0%, #f0f9ff 100%);
+      min-height: 100vh;
+    }
+    header {
+      margin-top: 20px;
+    }
+
+    .grid-container {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      /* フルHD前提で少し大きめに */
+      margin: 40px auto 20px;
+      padding: 30px;
+      background: #ffffffcc;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      /* 幅を広めに確保 */
+      max-width: 1000px;
+    }
+
+    #topPhrase {
+      font-weight: bold;
+      margin: 0;
+      font-size: 1.5em;
+    }
+    .message {
+      font-size: 1.2em;
+      margin: 15px;
+      min-height: 1.2em;
+    }
+    #scoreDisplay {
+      font-size: 1.1em;
+      color: #333;
+      margin: 5px;
+    }
+    #timer {
+      font-size: 1.1em;
+      margin: 5px 0 10px;
+      color: #333;
+    }
+
+    .controls {
+      margin-top: 10px;
+      display: flex;
+      gap: 1em;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    #gachaHintBtn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      background: #f90;
+      color: #000;
+      font-size: 1.1em;
+      cursor: pointer;
+    }
+    #gachaHintBtn:hover {
+      background: #e80;
+    }
+
+    /* 縦ヒントを広く (最初の列を 120px に) */
+    .col-hints {
+      display: grid;
+      grid-template-columns: 120px repeat(10, 50px);
+      text-align: center;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+    .col-hints div {
+      writing-mode: vertical-rl;
+      text-orientation: upright;
+      padding: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+      box-sizing: border-box;
+      background: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1.3em; /* ヒント文字大きめ */
+    }
+
+    .row-hints-grid {
+      display: flex;
+      align-items: flex-start;
+      gap: 5px;
+    }
+
+    /* 行ヒントを広く (幅を 120px に) */
+    .row-hints {
+      display: grid;
+      grid-template-columns: 120px;
+      grid-template-rows: repeat(10, 50px);
+      gap: 5px;
+    }
+    .row-hint-cell {
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      padding: 5px;
+      font-size: 1.3em; /* ヒント文字大きめ */
+      min-width: 0; /* 余計なはみ出し防止 */
+    }
+
+    .hint-chunk {
+      font-size: 1em; /* chunk内の文字サイズ(相対で調整) */
+      margin: 0 4px;
+      cursor: pointer;
+    }
+
+    /* 盤面を 10 x 10 で 50px に拡大 (フルHD対応) */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(10, 50px);
+      gap: 5px;
+    }
+    .cell {
+      width: 50px;
+      height: 50px;
+      border: 1px solid #ccc;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      background: #fff;
+      border-radius: 4px;
+      position: relative;
+      transition: background-color 0.2s;
+      font-size: 1.2em;
+    }
+    .cell:hover {
+      filter: brightness(95%);
+    }
+
+    .bg0 { background-color: #FFFFFF; }
+    .bg1 { background-color: #E0E0FF; }
+    .filled {
+      background: black !important;
+      color: white;
+    }
+    .marked {
+      background: lightgray !important;
+      color: black;
+    }
+
+    .overlay {
+      position: absolute; top: 0; left: 0;
+      width: 100%; height: 100%;
+      display: none;
+      align-items: center; justify-content: center;
+      background: rgba(255, 255, 255, 0.8);
+      font-size: 2em;
+      font-weight: bold;
+      z-index: 999;
+    }
+
+    /* 星エフェクト: デフォルトスケール=15, 星数増量で派手に */
+    .star {
+      position: absolute;
+      width: 12px; height: 12px; /* 少し大きく */
+      background: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='%23FFD700' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 2C12.6 4.1 13.4 6.9 14 8C15.1 10.3 17 12.5 17 12.5C17.5 12.8 17.9 13.2 18 13.7C18.2 14.1 17.9 14.7 17.7 15C17 16.1 15.8 17.6 15 19C14.4 20 13.5 21.9 12 22C10.5 21.9 9.6 20 9 19C8.2 17.6 7 16.1 6.3 15C6.1 14.7 5.8 14.1 6 13.7C6.1 13.2 6.5 12.8 7 12.5C7 12.5 8.9 10.3 10 8C10.6 6.9 11.4 4.1 12 2Z'/%3E%3C/svg%3E") center/cover;
+      pointer-events: none;
+      animation: starFly 1.2s forwards ease-out;
+      transform-origin: center;
+      opacity: 0.9;
+    }
+    @keyframes starFly {
+      0% {
+        transform: translate(0,0) scale(calc(0.4 * var(--starScale))) rotate(0deg);
+        opacity: 1;
+      }
+      100% {
+        transform: translate(var(--tx), var(--ty)) scale(calc(1.2 * var(--starScale))) rotate(360deg);
+        opacity: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div id="topPhrase"></div>
+  </header>
+
+  <!-- ガチャ当たり演出 (省略時は実装次第) -->
+
+  <div class="grid-container">
+    <div class="message" id="message"></div>
+    <div id="scoreDisplay">スコア: 0</div>
+    <div id="timer">経過時間: 00:00</div>
+
+    <!-- 列ヒント (幅を広げた) -->
+    <div class="col-hints" id="col-hints"></div>
+
+    <!-- 行ヒント + 盤面 -->
+    <div class="row-hints-grid">
+      <!-- 行ヒント (幅広) -->
+      <div class="row-hints" id="row-hints"></div>
+      <!-- 盤面 -->
+      <div id="grid" class="grid"></div>
+    </div>
+    <div class="overlay" id="overlay">正解！！</div>
+
+    <div class="controls">
+      <div>
+        <label for="volume">音量:</label>
+        <input type="range" id="volume" min="0" max="1" step="0.1" value="0.5">
+      </div>
+      <div>
+        <label for="color0">色1:</label>
+        <input type="color" id="color0" value="#ffffff">
+        <label for="color1">色2:</label>
+        <input type="color" id="color1" value="#e0e0ff">
+      </div>
+      <button id="gachaHintBtn">ガチャヒント</button>
+      <div>
+        <label for="starScaleRange">エフェクト大きさ:</label>
+        <input type="range" id="starScaleRange" min="1" max="100" value="15">
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* 
+       以下、ゲームロジックやガチャヒント機能などは前回の実装そのままです。
+       ここでは変更点は「ヒント領域を広げてはみ出しを防ぐ」「盤面サイズを50pxに拡大」と、
+       「星エフェクトのスケールを初期値15に、星数増で派手」にした部分だけです。
+       ガチャの抽選やファンファーレ、クリック音、スコア処理などは以前と同じ実装を貼り付けてください。
+    */
+
+
+    /* =========== 1) 状態管理 =========== */
+    let gameCleared = false;
+    let elapsedSec = 0;
+    let score = 0;
+
+    const startTime = Date.now();
+    const timerEl = document.getElementById('timer');
+    const messageEl = document.getElementById("message");
+    const scoreDisplay = document.getElementById("scoreDisplay");
+
+    let timerId = setInterval(() => {
+      if (gameCleared) return;
+      elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+      const mm = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+      const ss = String(elapsedSec % 60).padStart(2, '0');
+      timerEl.textContent = `経過時間: ${mm}:${ss}`;
+
+      // 時間経過でスコア減
+      if (score > 0) {
+        score = Math.max(score - 10, 0);
+        scoreDisplay.textContent = `スコア: ${score}`;
+      }
+    }, 1000);
+
+    function addScore(pts) {
+      score += pts;
+      if (score < 0) score = 0;
+      scoreDisplay.textContent = `スコア: ${score}`;
+    }
+
+    /* =========== 2) ランダムフレーズ =========== */
+    const phrases = [
+      "今日も脳トレ日和ですね！",
+      "あなたの閃きが世界を変える…かも？",
+      "あまり根を詰めすぎないでくださいね！",
+      "コーヒー片手にのんびりどうぞ～",
+      "ひとマスずつ進めばゴールにたどり着く！"
+    ];
+    const randomIndex = Math.floor(Math.random() * phrases.length);
+    document.getElementById("topPhrase").textContent = phrases[randomIndex];
+
+    /* =========== 3) AudioContext & 音量管理 =========== */
+    let volumeLevel = 0.5;
+    const volumeSlider = document.getElementById("volume");
+    volumeSlider.addEventListener("input", (e) => {
+      volumeLevel = parseFloat(e.target.value);
+    });
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    /* =========== 4) クリック音 (Celestia系) =========== */
+    function playClickSound() {
+      const partialFreqs = [880, 1760, 3520, 7040];
+      partialFreqs.forEach(freq => {
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        gainNode.gain.setValueAtTime(0.15 * volumeLevel, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+        osc.connect(gainNode).connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+      });
+    }
+
+    /* =========== 5) クリア時ファンファーレ (7秒) =========== */
+    function playFanfare() {
+      const bpm = 90;
+      const beatDuration = 60 / bpm;
+      const measureDuration = 4 * beatDuration;
+      const C = 261.63, D = 293.66, E = 329.63, F = 349.23,
+            G = 392.00, A = 440.00, B = 493.88;
+
+      const measure1 = [
+        [C, E, G, C*2],
+        [D, F, A, D*2],
+        [E, G, B, E*2],
+        [F, A, C, F*2],
+      ];
+      const measure2 = [
+        [G, B, D, G*2],
+        [E, G, B, E*2],
+        [A, C*2, E, A*2],
+        [F, A, C, F*2],
+      ];
+
+      let currentTime = audioCtx.currentTime;
+      function scheduleChord(freqs, startTime, dur) {
+        freqs.forEach(f => {
+          const osc = audioCtx.createOscillator();
+          const gg = audioCtx.createGain();
+          osc.type = "square";
+          osc.frequency.value = f;
+          gg.gain.setValueAtTime(0.3 * volumeLevel, startTime);
+          osc.connect(gg).connect(audioCtx.destination);
+          osc.start(startTime);
+          osc.stop(startTime + dur);
+        });
+      }
+
+      [measure1, measure2].forEach((m, idx) => {
+        const measureStart = currentTime + idx * measureDuration;
+        m.forEach((chord, i) => {
+          const chordStart = measureStart + i * beatDuration;
+          scheduleChord(chord, chordStart, beatDuration * 0.9);
+        });
+      });
+      const afterMeasures = currentTime + 2 * measureDuration;
+      scheduleChord([C, E, G, C*2], afterMeasures, 1.6667);
+    }
+
+    /* =========== 6) ピクロス本体 =========== */
+    const gridSize = 10;
+    let answerGrid = Array.from({ length: gridSize }, () =>
+      Array.from({ length: gridSize }, () => Math.random() > 0.5 ? 1 : 0)
+    );
+    let playerGrid = Array.from({ length: gridSize }, () => Array(gridSize).fill(0));
+
+    function tryAddScoreForCorrectFill(x, y) {
+      if (answerGrid[y][x] === 1 && playerGrid[y][x] === 1) {
+        addScore(1000);
+      }
+    }
+
+    /* ヒント生成(スペース区切りで二桁をまとめる) */
+    function getHints(grid) {
+      return grid.map(row => {
+        let hints = [];
+        let count = 0;
+        for (let cell of row) {
+          if (cell) count++;
+          else if (count) {
+            hints.push(count);
+            count = 0;
+          }
+        }
+        if (count) hints.push(count);
+        return hints.length ? hints.join(" ") : "0";
+      });
+    }
+    let rowHints = getHints(answerGrid);
+    let colHints = getHints(answerGrid[0].map((_, i) => answerGrid.map(r => r[i])));
+
+    /* =========== 7) ヒント表示 =========== */
+    function wrapHintTokens(hStr) {
+      let tokens = hStr.split(" ");
+      let html = "";
+      tokens.forEach((tk, i) => {
+        html += `<span class="hint-chunk">${tk}</span>`;
+        if (i < tokens.length - 1) {
+          html += `<span style="margin:0 5px;"></span>`;
+        }
+      });
+      return html;
+    }
+    function toggleHintChunk(e) {
+      const st = e.target.style;
+      st.color = (st.color === "red") ? "black" : "red";
+    }
+
+    // 縦ヒント
+    const colHintsEl = document.getElementById("col-hints");
+    let colHtml = "<div></div>"; // 先頭ダミー
+    colHints.forEach(h => {
+      colHtml += `<div>${wrapHintTokens(h)}</div>`;
+    });
+    colHintsEl.innerHTML = colHtml;
+
+    // 行ヒント
+    const rowHintsEl = document.getElementById("row-hints");
+    rowHints.forEach(h => {
+      const div = document.createElement("div");
+      div.classList.add("row-hint-cell");
+      div.innerHTML = wrapHintTokens(h);
+      rowHintsEl.appendChild(div);
+    });
+
+    // ヒント chunk にリスナー
+    document.querySelectorAll(".hint-chunk").forEach(chunk => {
+      chunk.addEventListener("click", toggleHintChunk);
+    });
+
+    /* =========== 8) 星エフェクト =========== */
+    function showStarExplosion(e) {
+      // 星数 12 で派手に
+      const count = 12;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const baseX = e.clientX - rect.left;
+      const baseY = e.clientY - rect.top;
+
+      for (let i = 0; i < count; i++) {
+        const star = document.createElement("div");
+        star.classList.add("star");
+        const angle = Math.random() * 2 * Math.PI;
+        const dist = 30 + Math.random()*20;
+        star.style.setProperty('--tx', `${Math.cos(angle)*dist}px`);
+        star.style.setProperty('--ty', `${Math.sin(angle)*dist}px`);
+        star.style.left = (baseX - 6) + 'px';
+        star.style.top  = (baseY - 6) + 'px';
+        e.currentTarget.appendChild(star);
+        setTimeout(()=>star.remove(),1200);
+      }
+    }
+
+    /* =========== 9) 盤面生成 (セル 50px) =========== */
+    const gridElement = document.getElementById("grid");
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
+        const cell = document.createElement("div");
+        cell.classList.add("cell");
+        // 5マスごとに色区切り
+        if (((Math.floor(x/5) + Math.floor(y/5)) % 2) === 0) {
+          cell.classList.add("bg0");
+        } else {
+          cell.classList.add("bg1");
+        }
+        cell.dataset.x = x;
+        cell.dataset.y = y;
+        gridElement.appendChild(cell);
+      }
+    }
+
+    // クリック
+    document.querySelectorAll(".cell").forEach(cell => {
+      cell.addEventListener("click",(e)=>{
+        playClickSound();
+        showStarExplosion(e);
+        if(!cell.classList.contains("marked")){
+          let x=parseInt(cell.dataset.x);
+          let y=parseInt(cell.dataset.y);
+          let wasEmpty=(playerGrid[y][x]===0);
+          playerGrid[y][x] = playerGrid[y][x]?0:1;
+          cell.classList.toggle("filled", playerGrid[y][x]===1);
+          if(wasEmpty && playerGrid[y][x]===1) {
+            tryAddScoreForCorrectFill(x,y);
+          }
+          checkWin();
+        }
+      });
+      cell.addEventListener("contextmenu",(e)=>{
+        e.preventDefault();
+        playClickSound();
+        showStarExplosion(e);
+        let x=parseInt(cell.dataset.x);
+        let y=parseInt(cell.dataset.y);
+        if(!cell.classList.contains("filled")){
+          playerGrid[y][x] = playerGrid[y][x]?0:-1;
+          cell.classList.toggle("marked", playerGrid[y][x]===-1);
+          cell.textContent = (playerGrid[y][x]===-1)?"×":"";
+        }
+      });
+    });
+
+    /* =========== 10) クリア判定 =========== */
+    function checkWin() {
+      for(let y=0; y<gridSize; y++){
+        for(let x=0; x<gridSize; x++){
+          if((playerGrid[y][x]===1)!==(answerGrid[y][x]===1)){
+            return;
+          }
+        }
+      }
+      // 全部合っていればクリア
+      if(!gameCleared){
+        gameCleared=true;
+        clearInterval(timerId);
+        playFanfare();
+        document.getElementById("overlay").style.display="flex";
+      }
+    }
+
+    /* =========== 11) ガチャヒント (SSR/SR/R/外れ) =========== */
+    const gachaHintBtn=document.getElementById("gachaHintBtn");
+    gachaHintBtn.addEventListener("click",()=>{
+      const filledCells=getFilledCorrectCells();
+      if(filledCells.length===0){
+        messageEl.textContent="まだ正解マスがないのでガチャヒントは使えません。";
+        return;
+      }
+      // コスト：正解マス1外す
+      shuffleArray(filledCells);
+      const costCell=filledCells[0];
+      removeFill(costCell.x,costCell.y);
+      messageEl.textContent="正解マス1個外しました…ガチャヒント発動！";
+
+      // 抽選
+      const r=Math.random()*100;
+      let fillCount=0;
+      if(r<5){ // SSR
+        fillCount=10;
+        playSSR();
+      } else if(r<15){ // SR
+        fillCount=5;
+        playSR();
+      } else if(r<35){ // R
+        fillCount=2;
+        playR();
+      } else {
+        fillCount=0;
+        playMiss();
+      }
+      if(fillCount>0){
+        fillCorrectCells(fillCount);
+      }
+      checkWin();
+    });
+
+    function getFilledCorrectCells(){
+      let arr=[];
+      for(let y=0; y<gridSize; y++){
+        for(let x=0; x<gridSize; x++){
+          if(answerGrid[y][x]===1 && playerGrid[y][x]===1){
+            arr.push({x,y});
+          }
+        }
+      }
+      return arr;
+    }
+    function removeFill(x,y){
+      playerGrid[y][x]=0;
+      const idx=y*gridSize+x;
+      const cell=document.querySelectorAll(".cell")[idx];
+      cell.classList.remove("filled");
+      cell.textContent="";
+    }
+    function fillCorrectCells(n){
+      let needed=[];
+      for(let y=0; y<gridSize; y++){
+        for(let x=0; x<gridSize; x++){
+          if(answerGrid[y][x]===1 && playerGrid[y][x]!==1){
+            needed.push({x,y});
+          }
+        }
+      }
+      shuffleArray(needed);
+      n=Math.min(n,needed.length);
+      const chosen=needed.slice(0,n);
+      chosen.forEach(({x,y})=>{
+        fillCorrectCell(x,y);
+      });
+      messageEl.textContent+=` ${n}マスを埋めました。`;
+    }
+    function fillCorrectCell(x,y){
+      playerGrid[y][x]=1;
+      const idx=y*gridSize+x;
+      const cell=document.querySelectorAll(".cell")[idx];
+      cell.classList.remove("marked");
+      cell.classList.add("filled");
+      cell.textContent="";
+      addScore(1000);
+    }
+
+    // ガチャ用サウンド (SSR, SR, R, MISS)
+    function playSSR(){
+      scheduleChime([660, 880, 660]);
+    }
+    function playSR(){
+      scheduleChime([660,520]);
+    }
+    function playR(){
+      scheduleChime([520,520]);
+    }
+    function playMiss(){
+      scheduleChime([200,150]);
+    }
+    function scheduleChime(freqs){
+      let t=audioCtx.currentTime;
+      freqs.forEach(f=>{
+        const osc=audioCtx.createOscillator();
+        const gainNode=audioCtx.createGain();
+        osc.frequency.value=f;
+        osc.type="square";
+        gainNode.gain.setValueAtTime(0.2*volumeLevel,t);
+        osc.connect(gainNode).connect(audioCtx.destination);
+
+        osc.start(t);
+        osc.stop(t+0.15);
+        t+=0.18;
+      });
+    }
+
+    /* =========== 12) 星スケール変更 =========== */
+    const starScaleRange=document.getElementById("starScaleRange");
+    starScaleRange.addEventListener("input",(e)=>{
+      const val=e.target.value;
+      document.documentElement.style.setProperty('--starScale',val);
+    });
+
+    // シャッフル
+    function shuffleArray(arr){
+      for(let i=arr.length-1;i>0;i--){
+        const j=Math.floor(Math.random()*(i+1));
+        [arr[i],arr[j]]=[arr[j],arr[i]];
+      }
+    }
+  </script>
+</body>
+</html>
